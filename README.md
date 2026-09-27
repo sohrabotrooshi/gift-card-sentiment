@@ -1,6 +1,6 @@
 # Gift Card Review Sentiment — LLM + Lexicon Classification Report
 
-A three-way sentiment classifier (positive / neutral / negative) for Amazon gift-card
+A three way sentiment classifier (positive / neutral / negative) for Amazon gift-card
 reviews, built from **title + text only**. A 35B Qwen3 LLM serves as the classifier; an
 NRC word-emotion lexicon provides a second, model-free read on each review's primary
 emotion; and a self-contained HTML dashboard makes every number verifiable at a glance.
