@@ -1,0 +1,120 @@
+{
+  "n": 150,
+  "gold_per_class": {
+    "POSITIVE": 50,
+    "NEUTRAL": 50,
+    "NEGATIVE": 50
+  },
+  "predicted_per_class": {
+    "POSITIVE": 56,
+    "NEUTRAL": 26,
+    "NEGATIVE": 68
+  },
+  "correct": 118,
+  "accuracy": 0.7867,
+  "macro_f1": 0.7661,
+  "per_class": {
+    "POSITIVE": {
+      "tp": 48,
+      "fp": 8,
+      "fn": 2,
+      "precision": 0.8571,
+      "recall": 0.96,
+      "f1": 0.9057
+    },
+    "NEUTRAL": {
+      "tp": 22,
+      "fp": 4,
+      "fn": 28,
+      "precision": 0.8462,
+      "recall": 0.44,
+      "f1": 0.5789
+    },
+    "NEGATIVE": {
+      "tp": 48,
+      "fp": 20,
+      "fn": 2,
+      "precision": 0.7059,
+      "recall": 0.96,
+      "f1": 0.8136
+    }
+  },
+  "confusion": {
+    "POSITIVE": {
+      "POSITIVE": 48,
+      "NEUTRAL": 8,
+      "NEGATIVE": 0
+    },
+    "NEUTRAL": {
+      "POSITIVE": 2,
+      "NEUTRAL": 22,
+      "NEGATIVE": 2
+    },
+    "NEGATIVE": {
+      "POSITIVE": 0,
+      "NEUTRAL": 20,
+      "NEGATIVE": 48
+    }
+  },
+  "errors": 32,
+  "error_allocation": {
+    "NEUTRAL->NEGATIVE": 20,
+    "NEUTRAL->POSITIVE": 8,
+    "POSITIVE->NEUTRAL": 2,
+    "NEGATIVE->NEUTRAL": 2
+  },
+  "star_distribution": {
+    "1": 46,
+    "2": 4,
+    "3": 50,
+    "4": 1,
+    "5": 49
+  },
+  "emotion_llm": {
+    "sadness": 10,
+    "anger": 30,
+    "trust": 25,
+    "disgust": 13,
+    "joy": 25,
+    "surprise": 14,
+    "neutral": 29,
+    "fear": 4
+  },
+  "emotion_wordlist": {
+    "anticipation": 64,
+    "joy": 15,
+    "neutral": 33,
+    "trust": 15,
+    "fear": 4,
+    "anger": 11,
+    "disgust": 3,
+    "sadness": 2,
+    "surprise": 3
+  },
+  "emotion_agreement": 28,
+  "emotion_agree_pct": 19,
+  "wordlist_all_zero": 33,
+  "wordlist_ties": 64,
+  "pos_five_star_pct": 98,
+  "neg_one_star_pct": 92,
+  "corpus_reviews": 152410,
+  "corpus_rating_hist": {
+    "5.0": 128248,
+    "4.0": 6692,
+    "3.0": 3271,
+    "2.0": 1873,
+    "1.0": 12326
+  },
+  "first_batch": {
+    "gold_pos": 93,
+    "gold_neg": 7,
+    "correct": 98,
+    "accuracy": 0.98,
+    "f1_positive": 0.9892,
+    "f1_negative": 0.8571,
+    "tp": 92,
+    "fp": 1,
+    "fn": 1,
+    "tn": 6
+  }
+}

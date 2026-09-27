@@ -1,0 +1,7 @@
+# decompressed copies of the raw data (the .gz is the committed artifact)
+data/raw/*.jsonl
+!data/raw/*.jsonl.gz
+
+__pycache__/
+*.pyc
+.DS_Store

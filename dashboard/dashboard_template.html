@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gift Card Review Sentiment — Batch Score</title>
+<style>
+/* ============ THEME ============
+   Recolor the whole dashboard by editing the tokens for
+   any theme below, or add a new [data-theme="name"] block. */
+:root{
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.05);
+  --good:#178a55; --bad:#d4432e;
+  /* fixed categorical hues for the eight NRC emotions + neutral; chips use color-mix so they read on any theme */
+  --em-anger:#cc503e; --em-anticipation:#8b62d0; --em-disgust:#7d9042;
+  --em-fear:#4b6fce; --em-joy:#dfa02f; --em-sadness:#5f88b8;
+  --em-surprise:#cf6fa8; --em-trust:#35a376; --em-neutral:#8a857d;
+}
+html[data-theme="paper"]{
+  --bg:#f6f4ef; --surface:#ffffff; --surface2:#f0ede6;
+  --ink:#1c1a17; --muted:#6b665e; --border:#e2ddd3;
+  --accent:#a8442c; --accent-ink:#ffffff; --chip:#efeae0;
+  --good:#1d7a52; --bad:#c23a2c; --good-bg:#e3efe9; --bad-bg:#f6e3de;
+}
+html[data-theme="ink"]{
+  --bg:#141210; --surface:#1e1b18; --surface2:#26221e;
+  --ink:#f2eee6; --muted:#a49c8f; --border:#38332c;
+  --accent:#e07a52; --accent-ink:#141210; --chip:#2b2622;
+  --good:#54d69a; --bad:#ff7a66; --good-bg:rgba(84,214,154,.12); --bad-bg:rgba(255,122,102,.12);
+}
+html[data-theme="slate"]{
+  --bg:#eef1f5; --surface:#ffffff; --surface2:#e9edf3;
+  --ink:#18202b; --muted:#5f6b7b; --border:#d7dee8;
+  --accent:#2b6cb7; --accent-ink:#ffffff; --chip:#e8edf4;
+  --good:#1e7d55; --bad:#c93d3d; --good-bg:#e2efe9; --bad-bg:#f7e3e3;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:var(--font-sans); line-height:1.5;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:56px 32px 96px}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- header ---------- */
+.overline{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--font-serif);font-size:clamp(30px,5vw,44px);line-height:1.08;margin:8px 0 6px;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--muted);max-width:60ch;font-size:15px;margin:0 0 22px}
+.meta{display:flex;flex-wrap:wrap;gap:8px}
+.meta .chip{font-size:12px;color:var(--muted);background:var(--chip);border:1px solid var(--border);padding:4px 10px;border-radius:999px;font-weight:500}
+.theme-row{display:flex;align-items:center;gap:10px;margin-left:auto}
+.theme-row span{font-size:12px;color:var(--muted)}
+.swatches{display:flex;gap:8px;margin-top:1px}
+.swatch{width:26px;height:26px;border-radius:50%;border:2px solid var(--surface);cursor:pointer;box-shadow:0 0 0 1px var(--border)} 
+.swatch[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent)}
+
+/* ---------- KPI ---------- */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:34px 0 18px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi .lab{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.kpi .val{font-size:34px;font-weight:650;font-family:var(--font-serif);letter-spacing:-.02em;margin-top:6px}
+.kpi .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.kpi .bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--accent)}
+.kpi.accent .val{color:var(--accent)}
+
+/* ---------- section ---------- */
+.sec{margin-top:44px}
+.sec h2{font-family:var(--font-serif);font-size:22px;font-weight:600;margin:0 0 4px}
+.sec .secsub{color:var(--muted);font-size:13.5px;margin:0 0 18px;max-width:66ch}
+
+/* ---------- grid: confusion + class split ---------- */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
+.panel h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 20px;font-weight:600}
+
+/* confusion matrix */
+.cm{display:grid;grid-template-columns:88px 1fr 1fr 1fr;gap:0;font-size:13px}
+.cm .gh{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;letter-spacing:.05em;text-transform:uppercase;font-weight:600;padding:6px}
+.cm .gh.ax{border-right:1px solid var(--border);color:var(--muted);text-transform:none;justify-content:flex-end;padding-right:14px}
+.cm .cell{height:74px;border-radius:10px;margin:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:transform .15s}
+.cm .cell:hover{transform:translateY(-2px)}
+.cm .cell b{font-size:24px;font-family:var(--font-serif);font-weight:650}
+.cm .cell span{font-size:11px;color:var(--muted)}
+.cm .cell.diag{background:var(--good-bg);color:var(--good)}
+.cm .cell.diag:hover{box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.cm .cell.off{background:var(--bad-bg);color:var(--bad)}
+.cm .ax2{font-size:11px;color:var(--muted);text-align:center;grid-column:1/-1;margin-top:10px;letter-spacing:.05em}
+
+/* class split bars */
+.classbar{margin:16px 0}
+.classbar .rowlab{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px;font-size:13px}
+.classbar .rowlab .cnt{color:var(--muted)}
+.track{height:20px;border-radius:7px;overflow:hidden;display:flex;background:var(--surface2)}
+.seg{height:100%}
+.seg.good{background:var(--good)}
+.seg.bad{background:var(--bad)}
+.legend{display:flex;gap:18px;margin-top:14px;font-size:12px;color:var(--muted)}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+.legend .sw.good{background:var(--good)} .legend .sw.bad{background:var(--bad)}
+
+/* ---------- mistakes ---------- */
+.mistake{display:flex;gap:16px;align-items:flex-start;padding:16px 18px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;background:var(--surface)}
+.mistake .num{font-family:var(--font-serif);font-size:13px;color:var(--muted);font-weight:650;padding-top:2px}
+.mistake .body{flex:1;min-width:0}
+.mistake .t{font-weight:600;font-size:14.5px}
+.mistake .shown{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5}
+.mistake .who{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;font-size:12px}
+.tag{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--border)}
+.tag.good{color:var(--good);background:var(--good-bg);border-color:transparent}
+.tag.bad{color:var(--bad);background:var(--bad-bg);border-color:transparent}
+.tag.neu{color:var(--muted);background:var(--chip);border-color:transparent}
+.tag.ink{color:var(--muted)}
+.okbad{display:flex;gap:2px;margin:14px 0 6px}
+.okbad .piece{height:10px;flex:1;border-radius:3px}
+.okbad .piece.good{background:var(--good)} .okbad .piece.bad{background:var(--bad)}
+
+/* ---------- review table ---------- */
+.filterbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.filterbar .grouplab{font-size:12px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;font-weight:600;margin-right:4px}
+.fbtn{font-size:13px;padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.fbtn .num{font-size:11px;color:var(--muted);font-weight:600;background:var(--chip);border-radius:999px;padding:1px 7px}
+.fbtn[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.fbtn[aria-pressed="true"] .num{background:rgba(0,0,0,.14);color:inherit}
+.fbtn.secondary{font-size:12px;color:var(--muted);text-decoration:underline dashed;background:transparent;border-color:transparent}
+.fbtn.secondary:hover{color:var(--accent)}
+.status{font-size:13px;color:var(--muted);margin:6px 2px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.status b{color:var(--ink);font-weight:600}
+.status .g{color:var(--good)} .status .b{color:var(--bad)}
+.status .dot{opacity:.5}
+
+/* ---------- emotion section ---------- */
+.emote-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.emote-hd .big{font-family:var(--font-serif);font-size:30px;font-weight:650;letter-spacing:-.02em}
+.emote-hd .subtx{color:var(--muted);font-size:13.5px}
+.emote-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.emote-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}
+.emote-panel h3{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.emote-panel h3 .sw{width:9px;height:9px;border-radius:3px;display:inline-block}
+.erow{display:grid;grid-template-columns:96px 1fr 30px;align-items:center;gap:10px;margin:7px 0}
+.erow .lbl{font-size:12.5px;color:var(--ink);text-transform:capitalize}
+.erow .n{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.ebar{height:11px;border-radius:6px;background:var(--surface2);overflow:hidden}
+.ebar i{display:block;height:100%;border-radius:6px;min-width:2px}
+.emote-card{display:flex;gap:16px;align-items:flex-start;padding:15px 18px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;background:var(--surface)}
+.emote-card .num{font-family:var(--font-serif);color:var(--muted);font-size:13px;padding-top:2px}
+.emote-card .t{font-weight:600;font-size:14px}
+.emote-card .shown{font-size:13px;color:var(--muted);margin-top:3px}
+.emote-card .who{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.emo-chip{font-size:11.5px;font-weight:650;padding:3px 10px;border-radius:999px;
+  color:var(--ec,var(--em-neutral));background:color-mix(in srgb, var(--ec,var(--em-neutral)) 16%, transparent)}
+.emo-chip .src{opacity:.7;font-weight:600}
+.div-note{font-size:13px;color:var(--muted);line-height:1.55;max-width:70ch;margin-top:14px}
+.div-note b{color:var(--ink)}
+
+/* ---------- descriptive layer ---------- */
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.srow{display:grid;grid-template-columns:44px 1fr 62px;align-items:center;gap:10px;margin:8px 0}
+.srow .lbl{font-size:12.5px;color:var(--ink);text-transform:capitalize;white-space:nowrap}
+.srow .n{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.sbar{height:13px;border-radius:6px;background:var(--surface2);overflow:hidden}
+.sbar i{display:block;height:100%;min-width:4px;border-radius:6px}
+.two{display:flex;gap:4px;height:13px}
+.two .half{flex:1;border-radius:6px;background:var(--surface2);overflow:hidden;position:relative}
+.two .half i{display:block;height:100%;min-width:4px;border-radius:6px}
+.delta{font-size:11.5px;font-weight:650;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);white-space:nowrap}
+.delta.up{color:var(--good);background:var(--good-bg);border-color:transparent}
+.delta.down{color:var(--bad);background:var(--bad-bg);border-color:transparent}
+.mrow{display:grid;grid-template-columns:76px 1fr 66px;align-items:center;gap:10px;margin:12px 0}
+.mrow .big{font-size:17px;font-weight:650;font-family:var(--font-serif);font-variant-numeric:tabular-nums}
+.mrow .frac{font-size:11.5px;color:var(--muted)}
+.mband{height:14px;border-radius:7px;background:var(--surface2);overflow:hidden}
+.mband i{display:block;height:100%;min-width:4px;border-radius:7px}
+.lgd{display:flex;gap:16px;margin-top:13px;font-size:12px;color:var(--muted)}
+.lgd .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+.lgd .sw.k{background:var(--accent)} .lgd .sw.p{background:color-mix(in srgb,var(--accent) 40%,transparent)}
+tbody tr{display:none}
+tbody tr.show{display:table-row}
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+thead th{position:sticky;top:0;background:var(--surface2);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:left;padding:11px 14px;border-bottom:1px solid var(--border)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--surface2);font-size:13.5px;vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.correct:hover{background:var(--good-bg)}
+tbody tr.wrong{background:var(--bad-bg)}
+.verdict{font-weight:700;font-size:12px;letter-spacing:.02em;white-space:nowrap}
+.rating{display:inline-block;min-width:32px;text-align:center;background:var(--chip);border:1px solid var(--border);border-radius:6px;padding:2px 7px;font-weight:600;font-size:12.5px}
+.tp,.tn{color:var(--good)} .fp,.fn{color:var(--bad)}
+.trow{color:var(--muted)}
+.expander{color:var(--accent);font-size:12.5px;white-space:nowrap;cursor:pointer;background:none;border:none;padding:0;font-weight:600}
+.expander:hover{text-decoration:underline}
+.detail{display:none}
+tbody tr.detail.show.open{display:table-row}
+tbody tr.detail.show.open td{color:var(--muted);font-size:13.5px;padding:14px 14px 18px;line-height:1.6}
+.detail .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+.mrow{white-space:nowrap}
+
+@media(max-width:760px){
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .duo{grid-template-columns:1fr}
+  .trio{grid-template-columns:1fr}
+  .wrap{padding:32px 18px 64px}
+  .theme-row{margin-left:0;margin-top:14px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div style="display:flex;align-items:flex-start;flex-wrap:wrap;gap:14px">
+      <div>
+        <div class="overline">Amazon 2023 · Gift Cards · Sentiment</div>
+        <h1>Review classifier — balanced sample score</h1>
+        <p class="sub">Reading only <em>title</em> and <em>text</em>, a Qwen3-35B model labels each review positive, neutral or negative.
+        The rating was never sent to the model — it is used here purely as the held-out answer key (4–5 positive, 3 neutral, 1–2 negative).</p>
+      </div>
+      <div class="theme-row">
+        <span>Theme</span>
+        <div class="swatches" id="swatches">
+          <button class="swatch" data-t="paper"  aria-pressed="true" title="Paper" style="background:#f6f4ef"></button>
+          <button class="swatch" data-t="ink"    title="Ink" style="background:#1e1b18"></button>
+          <button class="swatch" data-t="slate"  title="Slate" style="background:#2b6cb7"></button>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <span class="chip num">150 reviews · balanced 50 / 50 / 50</span>
+      <span class="chip">Seeded sample · seed 20260914</span>
+      <span class="chip">Model: cyankiwi/Qwen3.6-35B</span>
+      <span class="chip">0 parse or API errors</span>
+    </div>
+  </header>
+
+  <!-- ============ KPI ============ -->
+  <section class="kpis" id="kpis"></section>
+
+  <!-- ============ CONFUSION + CLASS SPLIT ============ -->
+  <section class="sec duo">
+    <div class="panel">
+      <h3>Confusion matrix — prediction vs. answer key</h3>
+      <div class="cm num" id="cm"></div>
+    </div>
+    <div class="panel">
+      <h3>Right vs. wrong, by class</h3>
+      <div id="classbars"></div>
+      <div class="legend">
+        <span><span class="sw good"></span>Correct</span>
+        <span><span class="sw bad"></span>Wrong</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DESCRIPTIVE LAYER ============ -->
+  <section class="sec">
+    <h2>Describing the sample — successes and failures at a glance</h2>
+    <p class="secsub">Three views on the same 150 reviews: what the raw ratings look like, how the model's predicted class counts compare with the answer key, and how often each class is answered right. No drilling required.</p>
+    <div class="trio">
+      <div class="panel">
+        <h3>Sample by star rating</h3>
+        <div id="stars"></div>
+        <div class="lgd">
+          <span><span class="sw" style="background:var(--good)"></span>4–5★ positive</span>
+          <span><span class="sw" style="background:var(--muted)"></span>3★ neutral</span>
+          <span><span class="sw" style="background:var(--bad)"></span>1–2★ negative</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Answer key vs. predicted</h3>
+        <div id="keyvspred"></div>
+        <div class="lgd">
+          <span><span class="sw k"></span>answer key</span>
+          <span><span class="sw p"></span>model predicted</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Answered right, by class</h3>
+        <div class="meter" id="rightmeter"></div>
+      </div>
+    </div>
+    <div class="div-note" id="takeaway"></div>
+  </section>
+
+  <!-- ============ MISTAKES ============ -->
+  <section class="sec">
+    <h2>Where it diverges</h2>
+    <p class="secsub">Every review where the model's answer disagreed with the rating-derived key (4–5 positive · 3 neutral · 1–2 negative). Each card flags the class boundary it fell across — open a review below to judge the text for yourself.</p>
+    <div id="mistakes"></div>
+  </section>
+
+  <!-- ============ EMOTION: TWO INDEPENDENT TAKES ============ -->
+  <section class="sec">
+    <h2>Primary emotion — two independent takes</h2>
+    <p class="secsub">Sentiment is only half the picture. Each review also gets a primary emotion from the NRC set (anger, anticipation, disgust, fear, joy, sadness, surprise, trust) two independent ways: the <b>LLM</b> reads the whole review; the <b>lexicon</b> sums NRC per-word emotion scores and takes the top. No rating is used by either.</p>
+    <div class="emote-hd">
+      <span class="big num" id="emote-agree"></span>
+      <span class="subtx">of the two takes name the same primary emotion</span>
+    </div>
+    <div class="emote-grid">
+      <div class="emote-panel">
+        <h3><span class="sw" style="background:var(--em-joy)"></span>LLM · reads the review</h3>
+        <div id="emo-llm"></div>
+      </div>
+      <div class="emote-panel">
+        <h3><span class="sw" style="background:var(--em-anticipation)"></span>NRC lexicon · word counts</h3>
+        <div id="emo-wl"></div>
+      </div>
+    </div>
+    <div class="div-note" id="emote-note"></div>
+    <div style="margin-top:16px">
+      <div class="lbl" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:10px">Where the two takes disagree</div>
+      <div id="emote-cards"></div>
+    </div>
+  </section>
+
+  <!-- ============ REVIEW DETAIL ============ -->
+  <section class="sec">
+    <h2>Every review</h2>
+    <p class="secsub">Gold is derived from the rating after classification; the model saw text only. Click <em>text</em> to read a review body. Click a class row to expand it.</p>
+    <div class="filterbar">
+      <span class="grouplab">Verdict</span>
+      <button class="fbtn" data-v="all" aria-pressed="true">All <span class="num" data-nv="all"></span></button>
+      <button class="fbtn" data-v="ok" aria-pressed="false">Correct <span class="num" data-nv="ok"></span></button>
+      <button class="fbtn" data-v="bad" aria-pressed="false">Wrong <span class="num" data-nv="bad"></span></button>
+      <span class="grouplab" style="margin-left:14px">Gold class</span>
+      <button class="fbtn" data-c="any" aria-pressed="true">Any <span class="num" data-nc="any"></span></button>
+      <button class="fbtn" data-c="pos" aria-pressed="false">Positive <span class="num" data-nc="pos"></span></button>
+      <button class="fbtn" data-c="neu" aria-pressed="false">Neutral <span class="num" data-nc="neu"></span></button>
+      <button class="fbtn" data-c="neg" aria-pressed="false">Negative <span class="num" data-nc="neg"></span></button>
+      <span class="grouplab" style="margin-left:14px">Emotion</span>
+      <button class="fbtn" data-e="any" aria-pressed="true">Any <span class="num" data-ne="any"></span></button>
+      <button class="fbtn" data-e="agree" aria-pressed="false">Agree <span class="num" data-ne="agree"></span></button>
+      <button class="fbtn" data-e="diff" aria-pressed="false">Differ <span class="num" data-ne="diff"></span></button>
+      <button class="fbtn secondary" data-action="clear" title="Reset all filters">reset</button>
+    </div>
+    <div class="status" id="fstatus"></div>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Rating</th><th>Title</th><th>Gold</th><th>Predicted</th><th>Verdict</th><th>Emotion · LLM</th><th>Emotion · lexicon</th><th>±</th><th></th>
+      </tr></thead>
+      <tbody id="trows"></tbody>
+    </table>
+  </section>
+
+  <footer style="margin-top:56px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:18px">
+    Balanced sample (50 per class, seed 20260914) scored against rating-derived labels: 4–5 positive, 3 neutral, 1–2 negative.
+    Emotion takes: LLM prompt output vs NRC word-level lexicon. Self-contained page — offline, baked-in data, no requests.
+  </footer>
+</div>
+
+<script>
+const ROWS = __DATA__;
+
+/* ---------- aggregate (3-class) ---------- */
+const CLASSES=["POSITIVE","NEUTRAL","NEGATIVE"];
+const gold = r=>r.gold, pred=r=>r.pred, ok=r=>r.gold===r.pred;
+const N = ROWS.length;
+const nOk = ROWS.filter(ok).length;
+function f1(p,r){return p+r===0?0:2*p*r/(p+r);}
+// per-class confusion helpers
+function clsCount(g,p){return ROWS.filter(r=>r.gold===g&&r.pred===p).length;}
+const clsStat = cl => {
+  const tp=clsCount(cl,cl);
+  const fp=ROWS.filter(r=>r.gold!==cl&&r.pred===cl).length;
+  const fn=ROWS.filter(r=>r.gold===cl&&r.pred!==cl).length;
+  const prec=tp/(tp+fp), rec=tp/(tp+fn);
+  return {tp,fp,fn,prec,rec,F:f1(prec,rec)};
+};
+const C = {}; CLASSES.forEach(c=>C[c]=clsStat(c));
+const acc=nOk/N;
+const macroF=[C.POSITIVE.F,C.NEUTRAL.F,C.NEGATIVE.F].reduce((a,b)=>a+b,0)/3;
+const pct=x=>(100*x).toFixed(1)+"%";
+
+/* ---------- KPI ---------- */
+const kpi=(lab,val,hint,extra="")=>`
+  <div class="kpi ${extra}"><div class="bar"></div>
+    <div class="lab">${lab}</div><div class="val num">${val}</div>
+    <div class="hint">${hint}</div></div>`;
+document.getElementById("kpis").innerHTML =
+  kpi("Accuracy", pct(acc), `macro-F1 ${pct(macroF)} · ${nOk} of ${N} match the key`, "accent") +
+  kpi("Positive · F1", (C.POSITIVE.F*100).toFixed(0), `prec ${pct(C.POSITIVE.prec)} · rec ${pct(C.POSITIVE.rec)}`) +
+  kpi("Neutral · F1", (C.NEUTRAL.F*100).toFixed(0), `prec ${pct(C.NEUTRAL.prec)} · rec ${pct(C.NEUTRAL.rec)}`) +
+  kpi("Negative · F1", (C.NEGATIVE.F*100).toFixed(0), `prec ${pct(C.NEGATIVE.prec)} · rec ${pct(C.NEGATIVE.rec)}`);
+
+/* ---------- confusion (3×3) ---------- */
+const cm = `
+  <div class="gh ax">answer key ↓</div>
+  ${CLASSES.map(c=>`<div class="gh">${c}</div>`).join("")}
+  ${CLASSES.map(p=>`
+    <div class="gh ax num">predicted ${p}</div>
+    ${CLASSES.map(g=>{
+      const n=clsCount(g,p), diag=p===g;
+      return `<div class="cell ${diag?"diag":"off"} num"><b>${n}</b><span>${diag?"correct":n?"✗":""}</span></div>`;
+    }).join("")}
+  `).join("")}
+  <div class="ax2">rows = prediction · columns = rating-derived answer key (4–5 positive · 3 neutral · 1–2 negative)</div>`;
+document.getElementById("cm").innerHTML = cm;
+
+/* ---------- class split bars ---------- */
+const bar=(name,goodCn,badCn)=>`
+  <div class="classbar">
+    <div class="rowlab"><span>${name}</span><span class="cnt num">${goodCn+badCn} reviews · ${pct(goodCn/(goodCn+badCn))} correct</span></div>
+    <div class="track">
+      <div class="seg good" style="width:${goodCn/(goodCn+badCn)*100}%"></div>
+      <div class="seg bad"  style="width:${badCn/(goodCn+badCn)*100}%"></div>
+    </div>
+  </div>`;
+document.getElementById("classbars").innerHTML = CLASSES.map(cl=>
+  bar("Gold "+cl.toLowerCase(), C[cl].tp, ROWS.filter(r=>r.gold===cl&&r.pred!==cl).length)).join("");
+
+/* ---------- descriptive layer ---------- */
+const clsVar=c=>c==="POSITIVE"?"var(--good)":c==="NEUTRAL"?"var(--muted)":"var(--bad)";
+// 1) star ratings
+const STARS=[1,2,3,4,5];
+const stN=s=>ROWS.filter(r=>r.rating===s).length;
+const stMax=Math.max(...STARS.map(stN));
+document.getElementById("stars").innerHTML = STARS.map(s=>{
+  const n=stN(s);
+  return `<div class="srow"><span class="lbl">★ ${s}</span>
+    <div class="sbar"><i style="width:${Math.max(4,n/stMax*100)}%;background:${clsVar(s>=4?"POSITIVE":s===3?"NEUTRAL":"NEGATIVE")}"></i></div>
+    <span class="n">${n}</span></div>`;
+}).join("");
+// 2) answer key vs predicted
+const predN=c=>ROWS.filter(r=>r.pred===c).length;
+const kvMax=Math.max(...CLASSES.map(c=>Math.max(50,predN(c))));
+document.getElementById("keyvspred").innerHTML = CLASSES.map(c=>{
+  const gk=ROWS.filter(r=>r.gold===c).length, pk=predN(c), d=pk-gk;
+  return `<div class="srow"><span class="lbl">${c.toLowerCase()}</span>
+    <div class="two">
+      <div class="half" title="answer key"><i style="width:${Math.max(4,gk/kvMax*100)}%;background:var(--accent)"></i></div>
+      <div class="half" title="model predicted"><i style="width:${Math.max(4,pk/kvMax*100)}%;background:color-mix(in srgb,var(--accent) 40%,transparent)"></i></div>
+    </div>
+    <span class="n">${gk} vs ${pk}</span>
+  </div>
+  <div style="text-align:right;margin:-4px 0 8px"><span class="delta">${d>0?"+":""}${d} ${d>0?"over":d<0?"under":"="} key</span></div>`;
+}).join("");
+// 3) answered right
+document.getElementById("rightmeter").innerHTML = CLASSES.map(c=>{
+  const tot=ROWS.filter(r=>r.gold===c).length, okk=C[c].tp, p=okk/tot;
+  const tint=p>=0.9?"var(--good)":p<0.65?"var(--bad)":"var(--muted)";
+  return `<div class="mrow"><span class="lbl">${c.toLowerCase()}</span>
+    <div class="mband"><i style="width:${Math.max(4,p*100)}%;background:${tint}"></i></div>
+    <div><span class="big">${Math.round(p*100)}%</span> <span class="frac">${okk}/${tot}</span></div>
+  </div>`;
+}).join("");
+// takeaway
+const eNeu=ROWS.filter(r=>r.gold==="NEUTRAL"&&r.pred!=="NEUTRAL").length;
+const eNeuN=ROWS.filter(r=>r.gold==="NEUTRAL"&&r.pred==="NEGATIVE").length;
+const eNeuP=ROWS.filter(r=>r.gold==="NEUTRAL"&&r.pred==="POSITIVE").length;
+const ePole=ROWS.filter(r=>r.gold!=="NEUTRAL"&&r.pred==="NEUTRAL").length;
+document.getElementById("takeaway").innerHTML =
+  `The failure is concentrated in one place: <b>neutral</b>. Positive and negative reviews are answered right 96% of
+   the time (48/50 each), but neutral only <b>${Math.round(C.NEUTRAL.rec*100)}%</b> (22/50) — the model called just
+   ${predN("NEUTRAL")} of ${N} reviews neutral while the key says 50. All ${N-nOk} errors sit on the neutral boundary:
+   ${eNeu} neutral reviews were pulled to a pole (${eNeuN} → negative, ${eNeuP} → positive), and ${ePole} pole reviews
+   (${ROWS.filter(r=>r.gold==="POSITIVE"&&r.pred==="NEUTRAL").length} positive, ${ROWS.filter(r=>r.gold==="NEGATIVE"&&r.pred==="NEUTRAL").length} negative)
+   were pulled to neutral. The star buckets themselves are skewed — positives here are ${Math.round(stN(5)/(stN(4)+stN(5))*100)}%
+   five-star and negatives ${Math.round(stN(1)/(stN(1)+stN(2))*100)}% one-star — so the model trips on the “meh” middle, not on the ends.`;
+
+/* ---------- mistakes ---------- */
+const goldTag=g=>g==="POSITIVE"?"good":g==="NEGATIVE"?"bad":"neu";
+const mis = ROWS.filter(r=>!ok(r)).map((r,i)=>`
+  <div class="mistake">
+    <div class="num">${String(i+1).padStart(2,"0")}</div>
+    <div class="body">
+      <div class="t">${esc(r.title)}</div>
+      <div class="shown">${esc(r.text.slice(0,110))}${r.text.length>110?"…":""}</div>
+      <div class="who">
+        <span class="tag ink num">rating ${r.rating}</span>
+        <span class="tag ${goldTag(r.gold)}">answer key: ${r.gold}</span>
+        <span class="tag ${goldTag(r.pred)}">model: ${r.pred}</span>
+        <span class="tag ink">✗ mismatch</span>
+      </div>
+    </div>
+  </div>`).join("");
+document.getElementById("mistakes").innerHTML = mis;
+
+/* ---------- emotion: two independent takes ---------- */
+const EMOS=["anger","anticipation","disgust","fear","joy","sadness","surprise","trust","neutral"];
+const emoCount = src => { const c={}; EMOS.forEach(e=>c[e]=0);
+  ROWS.forEach(r=>{ const v=(src==="llm"?r.emo_llm:r.emo_wl)||"neutral"; if(c[v]!==undefined)c[v]++; else c["neutral"]++; });
+  return c; };
+const eM=emoCount("llm"), eW=emoCount("wl"), eAllMax=Math.max(...EMOS.map(e=>Math.max(eM[e],eW[e])));
+function renderEmo(id,counts){
+  document.getElementById(id).innerHTML = EMOS.map(e=>`
+    <div class="erow">
+      <span class="lbl">${e}</span>
+      <div class="ebar"><i style="width:${counts[e]/eAllMax*100}%;background:var(--em-${e})"></i></div>
+      <span class="n">${counts[e]}</span>
+    </div>`).join("");
+}
+renderEmo("emo-llm",eM); renderEmo("emo-wl",eW);
+const eAgree = ROWS.filter(r=>r.emo_agree).length;
+document.getElementById("emote-agree").textContent = (eAgree/N*100).toFixed(0)+"%";
+const eDiverge = ROWS.filter(r=>!r.emo_agree);
+document.getElementById("emote-note").innerHTML =
+  `The two methods agree on only <b>${(eAgree/N*100).toFixed(0)}%</b>.
+   The lexicon leans hard on <b>anticipation</b> (${eW.anticipation} of ${N}): its word list tags
+   everyday gift-card words — “gift”, “card”, “perfect”, “arrives”, “buy” — as anticipation and trust,
+   so a purely lexical score stacks those tags and picks the top. The LLM instead reads the review
+   as a whole and lands on <b>joy</b> (${eM.joy}), <b>trust</b> (${eM.trust}) or <b>neutral</b> (${eM.neutral}).
+   The word list also can’t handle negation or context (“this card is a scam” still scores trust from “trust”,
+   “not worth buying” still scores anticipation from “worth/buy”). It agrees with the LLM mainly where a review
+   is short and literally positive — praising words that are also NRC-tagged — so treat its primary emotion as
+   “most frequent NRC-tagged word”, not the review’s actual feeling.`;
+document.getElementById("emote-cards").innerHTML = eDiverge.slice(0,10).map((r,i)=>`
+  <div class="emote-card">
+    <div class="num">${String(i+1).padStart(2,"0")}</div>
+    <div class="body" style="flex:1;min-width:0">
+      <div class="t">${esc(r.title)}</div>
+      <div class="shown">${esc((r.text||"").slice(0,95))}${(r.text||"").length>95?"…":""}</div>
+      <div class="who">
+        <span class="emo-chip" style="--ec:var(--em-${r.emo_llm})"><span class="src">LLM</span> · ${r.emo_llm}</span>
+        <span class="emo-chip" style="--ec:var(--em-${r.emo_wl})"><span class="src">LEX</span> · ${r.emo_wl}</span>
+        <span class="tag ink" style="font-size:11px">≠</span>
+      </div>
+    </div>
+  </div>`).join("") +
+  (eDiverge.length>10?`<div class="div-note" style="margin-top:10px">…and ${eDiverge.length-10} more. Filter the review table to <b>Emotion → differ</b> to read all of them.</div>`:"");
+
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+/* ---------- review table ---------- */
+const vcls = r=> ok(r)?"tp":"fn";
+const truth = r=>r.gold+" ("+r.rating+")";
+const tbody = document.getElementById("trows");
+tbody.innerHTML = ROWS.map((r,idx)=>`
+  <tr class="${ok(r)?"correct":"wrong"} ${ok(r)?"c":"w"}" data-idx="${idx}">
+    <td class="num mrow">${r.line}</td>
+    <td><span class="rating num">${r.rating}</span></td>
+    <td class="trow" style="max-width:340px">${esc(r.title)}</td>
+    <td><span class="tag ${goldTag(r.gold)}">${r.gold}</span></td>
+    <td><span class="tag ${goldTag(r.pred)}">${r.pred}</span></td>
+    <td class="verdict ${vcls(r)}">${ok(r)?"✓":"✗"}</td>
+    <td><span class="emo-chip" style="--ec:var(--em-${r.emo_llm})">${r.emo_llm}</span></td>
+    <td><span class="emo-chip" style="--ec:var(--em-${r.emo_wl})">${r.emo_wl}</span></td>
+    <td class="verdict ${r.emo_agree?"tp":"fn"}">${r.emo_agree?"=":"≠"}</td>
+    <td><button class="expander" data-i="${idx}">text</button></td>
+  </tr>
+  <tr class="detail" data-detail="${idx}">
+    <td></td><td></td>
+    <td colspan="8"><div class="lbl">review (text only — what the model saw)</div>${esc(r.text)}</td>
+  </tr>`).join("");
+
+/* ---------- filtering (verdict × gold class × emotion, live counts) ---------- */
+function setOK(el,tf){el.setAttribute("aria-pressed",tf?"true":"false");}
+const clsN = c=>ROWS.filter(r=>r.gold===c).length;
+const vp = v=> v==="ok"?nOk : v==="bad"?(N-nOk):N;
+const cp = c=> c==="any"?N:(c==="pos"?clsN("POSITIVE"):c==="neu"?clsN("NEUTRAL"):clsN("NEGATIVE"));
+
+const vBtns=[...document.querySelectorAll(".fbtn[data-v]")];
+const cBtns=[...document.querySelectorAll(".fbtn[data-c]")];
+const eBtns=[...document.querySelectorAll(".fbtn[data-e]")];
+["all","ok","bad"].forEach(k=>document.querySelector(`[data-nv="${k}"]`).textContent=vp(k));
+["any","pos","neu","neg"].forEach(k=>document.querySelector(`[data-nc="${k}"]`).textContent=cp(k));
+["any","agree","diff"].forEach(k=>document.querySelector(`[data-ne="${k}"]`).textContent =
+  k==="agree"?eAgree:(k==="diff"?(N-eAgree):N));
+
+let vState="all", cState="any", eState="any";
+const statusEl=document.getElementById("fstatus");
+function rowIdx(tr){return +tr.dataset.idx;}
+function applyFilter(){
+  const main=[...tbody.querySelectorAll("tr[data-idx]")];
+  let shown=0, shownOk=0;
+  main.forEach(tr=>{
+    const r=ROWS[rowIdx(tr)];
+    const okk=ok(r);
+    const vMatch= vState==="all"|| (vState==="ok"&&okk)|| (vState==="bad"&&!okk);
+    const cMatch= cState==="any"|| (cState==="pos"&&r.gold==="POSITIVE")||
+                  (cState==="neu"&&r.gold==="NEUTRAL")|| (cState==="neg"&&r.gold==="NEGATIVE");
+    const eMatch= eState==="any"|| (eState==="agree"&&r.emo_agree)|| (eState==="diff"&&!r.emo_agree);
+    const show=vMatch&&cMatch&&eMatch;
+    tr.classList.toggle("show",show);
+    const d=tbody.querySelector(`tr[data-detail="${tr.dataset.idx}"]`);
+    d.classList.toggle("show",show);
+    if(!show){d.classList.remove("open");}
+    if(show){shown++; if(okk)shownOk++;}
+  });
+  const wrong=shown-shownOk;
+  const pool=ROWS.filter(r=>{
+    const okk=ok(r);
+    const vMatch= vState==="all"|| (vState==="ok"&&okk)|| (vState==="bad"&&!okk);
+    const cMatch= cState==="any"|| (cState==="pos"&&r.gold==="POSITIVE")||
+                  (cState==="neu"&&r.gold==="NEUTRAL")|| (cState==="neg"&&r.gold==="NEGATIVE");
+    const eMatch= eState==="any"|| (eState==="agree"&&r.emo_agree)|| (eState==="diff"&&!r.emo_agree);
+    return vMatch&&cMatch&&eMatch;
+  });
+  const gP=pool.filter(r=>r.gold==="POSITIVE").length;
+  const gU=pool.filter(r=>r.gold==="NEUTRAL").length;
+  const gN=pool.length-gP-gU;
+  const eAg=pool.filter(r=>r.emo_agree).length;
+  statusEl.innerHTML =
+    `Showing <b>${shown}</b> of ${N} review${N!==1?"s":""}` +
+    ` <span class="dot">·</span> <span class="g">✓ ${shownOk} correct</span>` +
+    ` <span class="b">✗ ${wrong} wrong</span>` +
+    ` <span class="dot">·</span> by gold: <span class="g">${gP} positive</span> · <span class="b">${gU} neutral</span> · <span class="b">${gN} negative</span>` +
+    ` <span class="dot">·</span> emotion: <span class="g">${eAg} two-take agree</span> · <span class="b">${pool.length-eAg} differ</span>` +
+    (shown===0?"<span class='b'>— empty subset</span>":"");
+}
+vBtns.forEach(b=>b.addEventListener("click",()=>{vState=b.dataset.v;vBtns.forEach(x=>setOK(x,x===b));applyFilter();}));
+cBtns.forEach(b=>b.addEventListener("click",()=>{cState=b.dataset.c;cBtns.forEach(x=>setOK(x,x===b));applyFilter();}));
+eBtns.forEach(b=>b.addEventListener("click",()=>{eState=b.dataset.e;eBtns.forEach(x=>setOK(x,x===b));applyFilter();}));
+document.querySelector('[data-action="clear"]').addEventListener("click",()=>{
+  vState="all";cState="any";eState="any";
+  vBtns.forEach(x=>setOK(x,x.dataset.v==="all"));
+  cBtns.forEach(x=>setOK(x,x.dataset.c==="any"));
+  eBtns.forEach(x=>setOK(x,x.dataset.e==="any"));
+  applyFilter();
+});
+
+tbody.addEventListener("click",e=>{
+  if(e.target.classList.contains("expander")){
+    const d=tbody.querySelector(`tr[data-detail="${e.target.dataset.i}"]`);
+    const open=d.classList.toggle("open");
+    e.target.textContent=open?"hide":"text";
+  }
+});
+applyFilter("all");
+
+/* ---------- theme switcher ---------- */
+const sws=[...document.querySelectorAll(".swatch")];
+function setTheme(t){
+  document.documentElement.setAttribute("data-theme",t);
+  try{localStorage.setItem("gc-theme",t);}catch(e){}
+  sws.forEach(s=>setOK(s,t===s.dataset.t));
+}
+sws.forEach(s=>s.addEventListener("click",()=>setTheme(s.dataset.t)));
+try{ const t=localStorage.getItem("gc-theme"); if(t) setTheme(t);}catch(e){}
+</script>
+</body>
+</html>
